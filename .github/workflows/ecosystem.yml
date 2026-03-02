@@ -41,6 +41,10 @@ jobs:
         working-directory: og-image
         run: pnpm i && pnpm build
 
+      - name: 📦 Pack og-image (resolves catalog: refs)
+        working-directory: og-image
+        run: pnpm pack --pack-destination ${{ github.workspace }}
+
       - name: 📦 Checkout npmx.dev
         uses: actions/checkout@v6
         with:
@@ -50,17 +54,16 @@ jobs:
 
       - name: 🔗 Install with local og-image
         working-directory: npmx
-        env:
-          OG_IMAGE_PATH: ${{ github.workspace }}/og-image
         run: |
-          # Add pnpm override pointing nuxt-og-image to local build
+          TARBALL=$(ls ${{ github.workspace }}/nuxt-og-image-*.tgz)
+          echo "Using tarball: $TARBALL"
           node -e "
           const fs = require('fs')
           const yaml = fs.readFileSync('pnpm-workspace.yaml', 'utf-8')
-          const line = '  nuxt-og-image: file:' + process.env.OG_IMAGE_PATH
+          const line = '  nuxt-og-image: file:' + process.argv[1]
           const updated = yaml.replace(/^(overrides:)/m, 'overrides:\n' + line)
           fs.writeFileSync('pnpm-workspace.yaml', updated)
-          "
+          " "$TARBALL"
           cat pnpm-workspace.yaml
           pnpm i --no-frozen-lockfile
 
