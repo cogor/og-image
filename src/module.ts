@@ -330,7 +330,7 @@ export default defineNuxtModule<ModuleOptions>({
 
     // Cloudflare Workers-specific checks
     const normalizedPreset = preset.replace(/-legacy$/, '')
-    const isCloudflareWorkers = ['cloudflare', 'cloudflare-module'].includes(normalizedPreset)
+    const isCloudflareWorkers = ['cloudflare', 'cloudflare-module', 'cloudflare-durable'].includes(normalizedPreset)
     if (isCloudflareWorkers) {
       // Check for legacy Workers Sites at nitro init (when the actual preset is determined)
       nuxt.hooks.hook('nitro:init', (nitro) => {

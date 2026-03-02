@@ -106,8 +106,10 @@ export const RuntimeCompatibility: Record<string, RuntimeCompatibilitySchema> = 
     },
   },
   'cloudflare-pages': cloudflare,
+  'cloudflare-pages-static': cloudflare,
   'cloudflare': cloudflare,
   'cloudflare-module': cloudflare,
+  'cloudflare-durable': cloudflare,
 } as const
 
 export function detectTarget(options: { static?: boolean } = {}) {
@@ -136,8 +138,10 @@ export function getPresetNitroPresetCompatibility(target: string) {
   // Strip -legacy suffix as it doesn't affect compatibility
   const normalizedTarget = target.replace(/-legacy$/, '')
   let compatibility: RuntimeCompatibilitySchema = RuntimeCompatibility[normalizedTarget as keyof typeof RuntimeCompatibility]!
-  if (!compatibility)
-    compatibility = RuntimeCompatibility['nitro-dev']!
+  if (!compatibility) {
+    logger.warn(`Unknown Nitro preset "${target}" — falling back to node-server compatibility. Set ogImage.compatibility.runtime to override.`)
+    compatibility = NodeRuntime
+  }
   return compatibility
 }
 

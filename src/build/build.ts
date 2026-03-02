@@ -44,8 +44,8 @@ export async function setupBuildHandler(config: ModuleOptions, resolve: Resolver
     // TODO replace this once upstream is fixed
     const target = resolveNitroPreset(nitro.options)
     const normalizedTarget = target.replace(/-legacy$/, '')
-    const isEdgePreset = ['cloudflare', 'cloudflare-pages', 'cloudflare-module', 'vercel-edge', 'netlify-edge'].includes(normalizedTarget)
-    const isCloudflarePagesOrModule = normalizedTarget === 'cloudflare-pages' || normalizedTarget === 'cloudflare-module'
+    const isEdgePreset = ['cloudflare', 'cloudflare-pages', 'cloudflare-pages-static', 'cloudflare-module', 'cloudflare-durable', 'vercel-edge', 'netlify-edge'].includes(normalizedTarget)
+    const isCloudflarePagesOrModule = ['cloudflare-pages', 'cloudflare-pages-static', 'cloudflare-module', 'cloudflare-durable'].includes(normalizedTarget)
     if (isCloudflarePagesOrModule) {
       nitro.options.cloudflare = nitro.options.cloudflare || {}
       nitro.options.cloudflare.pages = nitro.options.cloudflare.pages || {}
