@@ -93,6 +93,8 @@ async function loadIconSet(prefix: string): Promise<IconifyJSON | null> {
   }).then(m => m.default).catch(() => null)
 
   iconCache.set(prefix, icons)
+  if (iconCache.size > 20)
+    iconCache.delete(iconCache.keys().next().value!)
   return icons
 }
 
@@ -141,6 +143,8 @@ async function fetchEmojiSvg(emoji: string, emojiSet: string): Promise<string | 
         let result = `<span style="display:flex"><svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="1em" height="1em">${body}</svg></span>`
         result = makeIdsUnique(result)
         emojiFetchCache.set(cacheKey, result)
+        if (emojiFetchCache.size > 200)
+          emojiFetchCache.delete(emojiFetchCache.keys().next().value!)
         return result
       }
     }
@@ -150,6 +154,8 @@ async function fetchEmojiSvg(emoji: string, emojiSet: string): Promise<string | 
   }
 
   emojiFetchCache.set(cacheKey, null)
+  if (emojiFetchCache.size > 200)
+    emojiFetchCache.delete(emojiFetchCache.keys().next().value!)
   return null
 }
 

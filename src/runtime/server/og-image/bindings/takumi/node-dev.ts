@@ -155,10 +155,15 @@ function extractResourceUrls(nodes: any): Promise<string[]> {
 // On worker crash/restart, all fonts are replayed to the new Renderer.
 class RendererWorkerProxy {
   private allFonts: Font[] = []
+  private allFontKeys = new Set<string>()
   private pendingFonts: Font[] = []
   private syncedGeneration = -1
 
   loadFont(font: { name: string, data: Uint8Array, weight?: number, style?: 'normal' | 'italic' | 'oblique' }) {
+    const key = `${font.name}|${font.weight || 400}|${font.style || 'normal'}`
+    if (this.allFontKeys.has(key))
+      return
+    this.allFontKeys.add(key)
     this.allFonts.push(font)
     this.pendingFonts.push(font)
   }
