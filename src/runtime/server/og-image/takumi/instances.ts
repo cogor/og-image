@@ -1,4 +1,4 @@
-const takumiInstance: { instance?: { initWasmPromise: Promise<void>, Renderer: any, extractResourceUrls: (node: any) => string[] } } = { instance: undefined }
+const takumiInstance: { instance?: { initWasmPromise: Promise<void>, Renderer: any, extractResourceUrls: (node: any) => string[] | Promise<string[]> } } = { instance: undefined }
 
 async function ensureInstance() {
   takumiInstance.instance = takumiInstance.instance || await import('#og-image/bindings/takumi').then(m => m.default)

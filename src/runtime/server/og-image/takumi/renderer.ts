@@ -189,7 +189,7 @@ async function createImage(event: OgImageRenderEventContext, format: 'png' | 'jp
   rewriteFontFamilies(nodes, state.familySubsetNames)
 
   const extractResourceUrls = await useExtractResourceUrls()
-  const resourceUrls = extractResourceUrls(nodes)
+  const resourceUrls = await extractResourceUrls(nodes)
   const { dataUris, bgUrls } = extractInlineResources(nodes)
 
   const allUrls = new Set([...resourceUrls, ...bgUrls])

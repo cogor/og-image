@@ -1,23 +1,43 @@
 import { Worker } from 'node:worker_threads'
-import { extractResourceUrls } from '@takumi-rs/core'
 
+// Worker maintains a persistent Renderer instance. Fonts are loaded
+// incrementally — only new fonts are sent with each render request.
+// This dramatically reduces allocator pressure vs. creating a new
+// Renderer + re-loading all fonts per render.
 const workerCode = `
+const { createRequire } = require('node:module')
+const _require = createRequire(process.cwd() + '/')
 const { parentPort } = require('node:worker_threads')
-const { Renderer } = require('@takumi-rs/core')
+const { Renderer, extractResourceUrls } = _require('@takumi-rs/core')
 
-parentPort.on('message', async ({ id, fonts, nodes, options }) => {
+let renderer = new Renderer()
+
+parentPort.on('message', async ({ id, type, newFonts, nodes, options }) => {
   try {
-    const renderer = new Renderer()
-    for (const font of fonts) {
-      await renderer.loadFont({
-        name: font.name,
-        data: font.data,
-        weight: font.weight,
-        style: font.style,
-      })
+    if (type === 'extractResourceUrls') {
+      const urls = extractResourceUrls(nodes)
+      parentPort.postMessage({ id, urls })
+      return
+    }
+    const fontWarnings = []
+    for (const font of (newFonts || [])) {
+      try {
+        await renderer.loadFont({
+          name: font.name,
+          data: font.data,
+          weight: font.weight,
+          style: font.style,
+        })
+      } catch (e) {
+        fontWarnings.push({ name: font.name, weight: font.weight, error: e?.message || String(e) })
+      }
     }
     const image = await renderer.render(nodes, options)
-    parentPort.postMessage({ id, image })
+    // Transfer the ArrayBuffer to avoid structured clone copy
+    const ab = image.buffer.byteLength === image.byteLength
+      ? image.buffer
+      : image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength)
+    parentPort.postMessage({ id, image: ab, fontWarnings }, [ab])
   } catch (err) {
     parentPort.postMessage({ id, error: err?.message || String(err) })
   }
@@ -25,8 +45,9 @@ parentPort.on('message', async ({ id, fonts, nodes, options }) => {
 `
 
 let worker: Worker | null = null
+let workerGeneration = 0
 let requestId = 0
-const pending = new Map<number, { resolve: (image: Buffer) => void, reject: (err: Error) => void, timer: ReturnType<typeof setTimeout> }>()
+const pending = new Map<number, { resolve: (value: any) => void, reject: (err: Error) => void, timer: ReturnType<typeof setTimeout> }>()
 
 function killWorker() {
   if (!worker)
@@ -40,28 +61,35 @@ function killWorker() {
   }
 }
 
-// Ensure worker doesn't keep the process alive on exit/signals
-process.on('exit', killWorker)
-process.on('SIGINT', () => {
-  killWorker()
-  process.exit(130)
-})
-process.on('SIGTERM', () => {
-  killWorker()
-  process.exit(143)
-})
+// Use Symbol.for to prevent duplicate signal handlers on HMR re-imports
+const signalKey = Symbol.for('og-image:takumi-worker-signals')
+if (!(globalThis as any)[signalKey]) {
+  (globalThis as any)[signalKey] = true
+  process.on('exit', killWorker)
+  process.once('SIGINT', () => {
+    killWorker()
+    process.exit(130)
+  })
+  process.once('SIGTERM', () => {
+    killWorker()
+    process.exit(143)
+  })
+}
 
 function createWorker() {
+  workerGeneration++
   const w = new Worker(workerCode, { eval: true })
-  w.on('message', ({ id, image, error }) => {
+  w.on('message', ({ id, image, urls, error, fontWarnings }) => {
     const p = pending.get(id)
     if (p) {
       clearTimeout(p.timer)
       pending.delete(id)
       if (error)
         p.reject(new Error(error))
+      else if (urls !== undefined)
+        p.resolve(urls)
       else
-        p.resolve(Buffer.from(image))
+        p.resolve({ image: Buffer.from(image), fontWarnings })
     }
   })
   w.on('error', (err: Error) => {
@@ -98,38 +126,72 @@ interface RenderOptions {
   format: 'png' | 'jpeg' | 'webp'
 }
 
-function render(fonts: Font[], nodes: any, options: RenderOptions): Promise<Buffer> {
+function ensureWorker() {
+  if (!worker)
+    worker = createWorker()
+}
+
+function postToWorker(msg: Record<string, any>, timeoutMs = 30_000): Promise<any> {
   return new Promise((resolve, reject) => {
-    if (!worker)
-      worker = createWorker()
+    ensureWorker()
 
     const id = ++requestId
-    // If WASM blocks the worker event loop, the only recovery is to kill the worker
     const timer = setTimeout(() => {
       pending.delete(id)
-      reject(new Error('takumi render timed out after 3s — killing worker'))
+      reject(new Error('takumi worker timed out — killing worker'))
       killWorker()
-    }, 3000)
+    }, timeoutMs)
     pending.set(id, { resolve, reject, timer })
-    worker.postMessage({ id, fonts, nodes, options })
+    worker!.postMessage({ id, ...msg })
   })
 }
 
-// Proxy class matching Renderer interface but delegating to worker
+function extractResourceUrls(nodes: any): Promise<string[]> {
+  return postToWorker({ type: 'extractResourceUrls', nodes })
+}
+
+// Proxy class matching Renderer interface but delegating to worker.
+// Keeps a persistent Renderer in the worker — fonts are sent incrementally.
+// On worker crash/restart, all fonts are replayed to the new Renderer.
 class RendererWorkerProxy {
-  private fonts: Font[] = []
+  private allFonts: Font[] = []
+  private pendingFonts: Font[] = []
+  private syncedGeneration = -1
 
   loadFont(font: { name: string, data: Uint8Array, weight?: number, style?: 'normal' | 'italic' | 'oblique' }) {
-    this.fonts.push(font)
+    this.allFonts.push(font)
+    this.pendingFonts.push(font)
   }
 
   render(nodes: any, options: RenderOptions): Promise<Buffer> {
-    return render(this.fonts, nodes, options)
+    // Ensure worker exists BEFORE checking generation — createWorker()
+    // increments workerGeneration, so we need the final value to decide
+    // whether to replay all fonts (crash recovery) or send only new ones
+    ensureWorker()
+
+    let fontsToSend: Font[]
+    if (this.syncedGeneration !== workerGeneration) {
+      // Worker was recreated — replay all fonts into the new Renderer
+      fontsToSend = [...this.allFonts]
+      this.pendingFonts = []
+    }
+    else {
+      fontsToSend = this.pendingFonts.splice(0)
+    }
+    this.syncedGeneration = workerGeneration
+    return postToWorker({ type: 'render', newFonts: fontsToSend, nodes, options }).then((result: any) => {
+      // Surface font loading warnings from the worker
+      if (result.fontWarnings?.length) {
+        for (const w of result.fontWarnings)
+          console.warn(`[nuxt-og-image] Failed to load font "${w.name}" (weight: ${w.weight}) into takumi renderer: ${w.error}`)
+      }
+      return result.image
+    })
   }
 }
 
 export default {
   initWasmPromise: Promise.resolve(),
   Renderer: RendererWorkerProxy as unknown as typeof import('@takumi-rs/core').Renderer,
-  extractResourceUrls,
+  extractResourceUrls: extractResourceUrls as unknown as typeof import('@takumi-rs/core').extractResourceUrls,
 }
