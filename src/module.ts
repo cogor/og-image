@@ -1015,8 +1015,17 @@ export default defineNuxtModule<ModuleOptions>({
               // e.g., NuxtSeo.satori.vue → NuxtSeoSatori (matching what addComponentsDir produces in dev)
               const pascalName = file.replace('.vue', '').split('.').map((s, i) => i === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1)).join('')
               const filePath = resolve(communityDir, file)
-              // skip if already added (user ejected with same name)
-              if (ogImageComponentCtx.components.some(c => c.pascalName === pascalName))
+              // skip if already added — check both exact match and base name match
+              // (ejected templates have different prefixes, e.g., OgImageNuxtSeoSatori vs NuxtSeoSatori)
+              const communityBaseNames = getRegisteredBaseNames(pascalName)
+              if (ogImageComponentCtx.components.some((c) => {
+                if (c.pascalName === pascalName)
+                  return true
+                if (c.renderer !== renderer)
+                  return false
+                const existingBaseNames = getRegisteredBaseNames(c.pascalName)
+                return communityBaseNames.some(cb => existingBaseNames.includes(cb))
+              })) {
                 return
               }
               ogImageComponentCtx.components.push({

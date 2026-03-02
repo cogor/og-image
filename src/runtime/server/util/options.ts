@@ -127,8 +127,15 @@ function resolveComponent(name: string): { component: OgImageComponent, renderer
     })
   }
 
-  // When multiple renderers match and no renderer specified, pick the first one
-  // (e.g., 'NuxtSeo' matches both NuxtSeoSatori and NuxtSeoTakumi — use first)
+  // Prefer app components over community templates — community templates are only in
+  // componentNames for validation (to show the ejection error), not for actual rendering
+  const appComponents = filtered.filter((c: OgImageComponent) => c.category !== 'community')
+  if (appComponents.length > 0) {
+    const resolved = appComponents[0]
+    return { component: resolved, renderer: resolved.renderer }
+  }
+
+  // Only community templates matched — return the first one (will trigger ejection error)
   const resolved = filtered[0]
   return { component: resolved, renderer: resolved.renderer }
 }
@@ -163,8 +170,8 @@ export function normaliseOptions(_options: DefineOgImageInput): NormalisedOption
     renderer = result.renderer
   }
   else {
-    // no component specified — use first registered
-    resolved = componentNames[0]
+    // no component specified — use first non-community component, fall back to first overall
+    resolved = componentNames.find((c: OgImageComponent) => c.category !== 'community') || componentNames[0]
     renderer = resolved.renderer
   }
 
@@ -173,9 +180,13 @@ export function normaliseOptions(_options: DefineOgImageInput): NormalisedOption
   // check if using a community template - auto-ejected in dev, error in prod
   if (resolved.category === 'community') {
     if (!import.meta.dev) {
+      const requestedName = _options.component || '(default)'
+      const appNames = componentNames.filter((c: OgImageComponent) => c.category !== 'community').map((c: OgImageComponent) => c.pascalName)
       throw createError({
         statusCode: 500,
-        message: `Community template "${resolved.pascalName}" must be ejected before production use. Run: npx nuxt-og-image eject ${resolved.pascalName}`,
+        message: `Community template "${resolved.pascalName}" must be ejected before production use. Run: npx nuxt-og-image eject ${resolved.pascalName}${
+          requestedName !== '(default)' ? `\n  Requested component: "${requestedName}"` : ''
+        }${appNames.length ? `\n  Available app components: ${appNames.join(', ')}` : '\n  No app components found — create one in components/OgImage/'}`,
       })
     }
   }
