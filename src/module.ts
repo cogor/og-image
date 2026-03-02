@@ -383,6 +383,16 @@ export default defineNuxtModule<ModuleOptions>({
       // Capture UnoCSS config from module hook (may have Nuxt-specific settings)
       nuxt.hook('unocss:config' as any, (config: any) => {
         setUnoConfig(config)
+        // Exclude OG image templates from UnoCSS pipeline scanning.
+        // OG image handles its own CSS resolution via the vite-asset-transform plugin,
+        // so UnoCSS processing these files is wasteful and adds significant memory pressure
+        // during builds (can cause heap corruption in large apps).
+        const rendererSuffixes = ['takumi', 'satori', 'browser']
+        const excludePatterns = rendererSuffixes.map(s => `**/*.${s}.vue`)
+        config.content = config.content || {}
+        config.content.pipeline = config.content.pipeline || {}
+        config.content.pipeline.exclude = config.content.pipeline.exclude || []
+        config.content.pipeline.exclude.push(...excludePatterns)
       })
 
       // Create the provider instance
