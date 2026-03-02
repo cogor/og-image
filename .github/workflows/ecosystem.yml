@@ -1,0 +1,76 @@
+name: Ecosystem
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  npmx:
+    name: 🌐 npmx.dev build (${{ matrix.attempt }})
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
+
+    steps:
+      - name: 📦 Checkout og-image
+        uses: actions/checkout@v6
+        with:
+          path: og-image
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: og-image/package.json
+
+      - name: 🏗️ Build og-image
+        working-directory: og-image
+        run: pnpm i && pnpm build
+
+      - name: 📦 Checkout npmx.dev
+        uses: actions/checkout@v6
+        with:
+          repository: harlan-zw/fork-npmx.dev
+          ref: feat/og-image-v6
+          path: npmx
+
+      - name: 🔗 Install with local og-image
+        working-directory: npmx
+        env:
+          OG_IMAGE_PATH: ${{ github.workspace }}/og-image
+        run: |
+          # Add pnpm override pointing nuxt-og-image to local build
+          node -e "
+          const fs = require('fs')
+          const yaml = fs.readFileSync('pnpm-workspace.yaml', 'utf-8')
+          const line = '  nuxt-og-image: file:' + process.env.OG_IMAGE_PATH
+          const updated = yaml.replace(/^(overrides:)/m, 'overrides:\n' + line)
+          fs.writeFileSync('pnpm-workspace.yaml', updated)
+          "
+          cat pnpm-workspace.yaml
+          pnpm i --no-frozen-lockfile
+
+      - name: 🏗️ Build npmx.dev
+        working-directory: npmx
+        run: pnpm build:test
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: 🖥️ Browser tests
+        if: success()
+        working-directory: npmx
+        run: pnpm test:browser:prebuilt
