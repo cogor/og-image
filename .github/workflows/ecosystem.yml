@@ -41,7 +41,7 @@ jobs:
         working-directory: og-image
         run: pnpm i && pnpm build
 
-      - name: 📦 Pack og-image (resolves catalog: refs)
+      - name: '📦 Pack og-image (resolves catalog: refs)'
         working-directory: og-image
         run: pnpm pack --pack-destination ${{ github.workspace }}
 
