@@ -38,6 +38,12 @@ const NodeDevRuntime: RuntimeCompatibilitySchema = {
   takumi: 'node-dev', // use worker to prevent crashes from killing process
 }
 
+const NodePrerenderRuntime: RuntimeCompatibilitySchema = {
+  ...NodeRuntime,
+  resvg: 'node-dev', // use worker to prevent crashes from killing prerender process
+  takumi: 'node-dev', // use worker to prevent crashes from killing prerender process
+}
+
 const cloudflare: RuntimeCompatibilitySchema = {
   browser: 'cloudflare',
   resvg: 'wasm',
@@ -70,7 +76,7 @@ export const WebContainer: RuntimeCompatibilitySchema = {
 
 export const RuntimeCompatibility: Record<string, RuntimeCompatibilitySchema> = {
   'nitro-dev': NodeDevRuntime,
-  'nitro-prerender': NodeRuntime,
+  'nitro-prerender': NodePrerenderRuntime,
   'node-server': NodeRuntime,
   'stackblitz': WebContainer,
   'codesandbox': WebContainer,
