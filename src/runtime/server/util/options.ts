@@ -180,7 +180,7 @@ export function normaliseOptions(_options: DefineOgImageInput): NormalisedOption
   // check if using a community template - auto-ejected in dev, error in prod
   if (resolved.category === 'community') {
     if (!import.meta.dev) {
-      const requestedName = _options.component || '(default)'
+      const requestedName = (_options as OgImageOptions).component || '(default)'
       const appNames = componentNames.filter((c: OgImageComponent) => c.category !== 'community').map((c: OgImageComponent) => c.pascalName)
       throw createError({
         statusCode: 500,
