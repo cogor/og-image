@@ -11,10 +11,9 @@ parentPort.on('message', ({ id, svg, options }) => {
   try {
     const resvg = new Resvg(svg, options)
     const png = resvg.render().asPng()
-    // Transfer the ArrayBuffer to avoid structured clone copy
-    const ab = png.buffer.byteLength === png.byteLength
-      ? png.buffer
-      : png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength)
+    // Always slice to create a standard ArrayBuffer — native addon buffers
+    // use external memory that can't be transferred via postMessage
+    const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength)
     parentPort.postMessage({ id, png: ab }, [ab])
   } catch (err) {
     parentPort.postMessage({ id, error: err?.message || String(err) })

@@ -1094,6 +1094,12 @@ export default defineNuxtModule<ModuleOptions>({
       baseURL: '/_og-static-fonts',
       maxAge: 60 * 60 * 24 * 365,
     })
+    // Bundled Inter fallback fonts (served under same prefix so node.ts resolver can fetch them)
+    nuxt.options.nitro.publicAssets.push({
+      dir: resolve('./runtime/public/_og-fonts'),
+      baseURL: '/_og-static-fonts',
+      maxAge: 60 * 60 * 24 * 365,
+    })
 
     nuxt.options.nitro.virtual['#og-image-virtual/public-assets.mjs'] = async () => {
       // Use dev-prerender binding which handles dev/prerender/runtime for node

@@ -18,13 +18,18 @@ export const emojiCache: Storage<string> = createStorage<string>({
   driver: lruCacheDriver({ max: 1000 }),
 })
 
-// Cache loaded font data by cacheKey (family-weight-style-src).
-// Stores BufferSource directly — no base64 serialization overhead.
-export const fontCache: Storage<BufferSource> = createStorage<BufferSource>({
-  driver: lruCacheDriver({ max: 100 }),
-})
+// Simple bounded Map for font binary data — avoids unstorage JSON serialization
+// which corrupts BufferSource values
+class BoundedMap<V> {
+  private map = new Map<string, V>()
+  constructor(private max: number) {}
+  get(key: string): V | undefined { return this.map.get(key) }
+  set(key: string, value: V) {
+    if (this.map.size >= this.max)
+      this.map.delete(this.map.keys().next().value!)
+    this.map.set(key, value)
+  }
+}
 
-// Bounded cache for satori's stable font array references.
-export const fontArrayCache: Storage<RuntimeFontConfig[]> = createStorage<RuntimeFontConfig[]>({
-  driver: lruCacheDriver({ max: 20 }),
-})
+export const fontCache = new BoundedMap<BufferSource>(100)
+export const fontArrayCache = new BoundedMap<RuntimeFontConfig[]>(20)

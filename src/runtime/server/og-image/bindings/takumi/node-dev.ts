@@ -33,10 +33,9 @@ parentPort.on('message', async ({ id, type, newFonts, nodes, options }) => {
       }
     }
     const image = await renderer.render(nodes, options)
-    // Transfer the ArrayBuffer to avoid structured clone copy
-    const ab = image.buffer.byteLength === image.byteLength
-      ? image.buffer
-      : image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength)
+    // Always slice to create a standard ArrayBuffer — native addon buffers
+    // use external memory that can't be transferred via postMessage
+    const ab = image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength)
     parentPort.postMessage({ id, image: ab, fontWarnings }, [ab])
   } catch (err) {
     parentPort.postMessage({ id, error: err?.message || String(err) })

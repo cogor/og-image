@@ -34,7 +34,7 @@ export interface LoadFontsOptions {
 async function loadFont(event: H3Event, font: FontConfig, src: string): Promise<BufferSource | null> {
   // Include src in cache key to differentiate font subsets (e.g. latin vs cyrillic)
   const cacheKey = `${font.family}-${font.weight}-${font.style}-${src}`
-  const cached = await fontCache.getItem(cacheKey)
+  const cached = fontCache.get(cacheKey)
   if (cached)
     return cached
   const data = await resolve(event, { ...font, src }).catch((err) => {
@@ -43,7 +43,7 @@ async function loadFont(event: H3Event, font: FontConfig, src: string): Promise<
   })
   if (!data)
     return null
-  await fontCache.setItem(cacheKey, data)
+  fontCache.set(cacheKey, data)
   return data
 }
 
@@ -194,10 +194,10 @@ export async function loadAllFonts(event: H3Event, options: LoadFontsOptions): P
 
   // Return a stable array reference so satori's WeakMap font cache hits
   const fingerprint = loaded.map(f => f.cacheKey).sort().join('|')
-  const cachedArray = await fontArrayCache.getItem(fingerprint)
+  const cachedArray = fontArrayCache.get(fingerprint)
   if (cachedArray)
     return cachedArray
-  await fontArrayCache.setItem(fingerprint, loaded)
+  fontArrayCache.set(fingerprint, loaded)
 
   // Skip warnings for bundled community templates — users can't control their font usage
   const isCommunity = options.component && (map as Record<string, any>)[options.component]?.category === 'community'
