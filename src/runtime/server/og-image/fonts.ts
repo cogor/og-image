@@ -5,7 +5,7 @@ import { fontRequirements, getComponentFontMap } from '#og-image/font-requiremen
 import resolvedFonts from '#og-image/fonts'
 import availableFonts from '#og-image/fonts-available'
 import { logger } from '../../logger'
-import { fontCache } from './cache/lru'
+import { fontArrayCache, fontCache } from './cache/lru'
 import { codepointsIntersectRanges, parseUnicodeRange } from './unicode-range'
 
 export { codepointsIntersectRanges, extractCodepointsFromTakumiNodes, extractCodepointsFromVNodes, parseUnicodeRange } from './unicode-range'
@@ -35,25 +35,15 @@ async function loadFont(event: H3Event, font: FontConfig, src: string): Promise<
   // Include src in cache key to differentiate font subsets (e.g. latin vs cyrillic)
   const cacheKey = `${font.family}-${font.weight}-${font.style}-${src}`
   const cached = await fontCache.getItem(cacheKey)
-  if (cached) {
-    // Decode base64 back to Buffer
-    const data = Buffer.from(cached, 'base64')
-    return data
-  }
+  if (cached)
+    return cached
   const data = await resolve(event, { ...font, src }).catch((err) => {
-    // Suppress 404 warnings for converted TTF fonts - these are intentionally deleted
-    // for variable fonts (which would crash Satori's opentype.js parser)
-    const is404OnTtf = src.endsWith('.ttf') && (err.message?.includes('404') || err.message?.includes('not found'))
-    if (!is404OnTtf) {
-      logger.warn(`Failed to load font ${font.family}: ${err.message}`)
-    }
+    logger.warn(`Failed to load font ${font.family}: ${err.message}`)
     return null
   })
   if (!data)
     return null
-  // Encode as base64 for storage to avoid LRU cache serialization issues
-  const base64 = Buffer.from(data as Buffer).toString('base64')
-  await fontCache.setItem(cacheKey, base64)
+  await fontCache.setItem(cacheKey, data)
   return data
 }
 
@@ -72,9 +62,15 @@ function selectFontsForRequirements(allFonts: FontConfig[], requirements: typeof
     return [...allFonts]
 
   // Group style-matched fonts by family, filtering to required families when specified
+  const fallbackFonts: FontConfig[] = []
   const byFamily = new Map<string, FontConfig[]>()
   const requiredFamilies = requirements.families.length > 0 ? new Set(requirements.families) : null
   for (const f of allFonts) {
+    // Fallback fonts always survive filtering
+    if (f.fallback) {
+      fallbackFonts.push(f)
+      continue
+    }
     if (!requirements.styles.includes(f.style as 'normal' | 'italic'))
       continue
     if (requiredFamilies && !requiredFamilies.has(f.family))
@@ -100,6 +96,8 @@ function selectFontsForRequirements(allFonts: FontConfig[], requirements: typeof
     }
     selected.push(...familyFonts.filter(f => selectedWeights.has(f.weight)))
   }
+  // Append fallback fonts after selected fonts so they're lowest priority
+  selected.push(...fallbackFonts)
   return selected
 }
 
@@ -107,7 +105,7 @@ const _warnedFontKeys = new Set<string>()
 
 // Satori uses a WeakMap font cache keyed by array identity — returning the same
 // array reference across requests lets satori skip re-parsing font binaries.
-const _fontArrayCache = new Map<string, RuntimeFontConfig[]>()
+// fontArrayCache is imported from ./cache/lru (bounded unstorage LRU, max 20)
 
 export function loadAllFontsDebug(component?: string) {
   const map = getComponentFontMap()
@@ -176,7 +174,13 @@ export async function loadAllFonts(event: H3Event, options: LoadFontsOptions): P
         // Takumi (preferStatic + supportsWoff2): fall through to WOFF2 — better than nothing
       }
 
-      const data = await loadFont(event, f, src)
+      let data = await loadFont(event, f, src)
+      // When satoriSrc fails to load (e.g. 404), try original WOFF2 for renderers that support it
+      if (!data && src !== f.src && options.supportsWoff2) {
+        data = await loadFont(event, f, f.src)
+        if (data)
+          src = f.src
+      }
       if (!data)
         return null
       return {
@@ -190,10 +194,10 @@ export async function loadAllFonts(event: H3Event, options: LoadFontsOptions): P
 
   // Return a stable array reference so satori's WeakMap font cache hits
   const fingerprint = loaded.map(f => f.cacheKey).sort().join('|')
-  const cachedArray = _fontArrayCache.get(fingerprint)
+  const cachedArray = await fontArrayCache.getItem(fingerprint)
   if (cachedArray)
     return cachedArray
-  _fontArrayCache.set(fingerprint, loaded)
+  await fontArrayCache.setItem(fingerprint, loaded)
 
   // Skip warnings for bundled community templates — users can't control their font usage
   const isCommunity = options.component && (map as Record<string, any>)[options.component]?.category === 'community'
@@ -203,6 +207,8 @@ export async function loadAllFonts(event: H3Event, options: LoadFontsOptions): P
     const variableFamilies = [...new Set(fonts.map(f => f.family))]
     const warnKey = `variable-fonts-${variableFamilies.join(',')}`
     if (!_warnedFontKeys.has(warnKey)) {
+      if (_warnedFontKeys.size >= 100)
+        _warnedFontKeys.clear()
       _warnedFontKeys.add(warnKey)
       logger.warn(`All fonts are variable fonts (${variableFamilies.join(', ')}). Variable fonts are not supported by Satori renderer. Falling back to bundled Inter font. Consider using the 'takumi' renderer for variable font support.`)
     }
@@ -222,6 +228,8 @@ export async function loadAllFonts(event: H3Event, options: LoadFontsOptions): P
         const warnKey = `${family}-${reqWeight}-${closest}-${options.component || ''}`
         if (_warnedFontKeys.has(warnKey))
           continue
+        if (_warnedFontKeys.size >= 100)
+          _warnedFontKeys.clear()
         _warnedFontKeys.add(warnKey)
         logger.warn(`Font "${family}" weight ${reqWeight} not configured${component}, using ${closest} instead.${fallbackNote}`)
       }

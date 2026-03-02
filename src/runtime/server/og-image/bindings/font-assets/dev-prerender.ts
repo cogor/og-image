@@ -28,11 +28,11 @@ export async function resolve(event: H3Event, font: FontConfig): Promise<Buffer>
   }
 
   if (import.meta.prerender) {
-    // Satori static font downloads (separate from @nuxt/fonts to avoid conflicts)
-    if (path.startsWith('/_og-satori-fonts/')) {
-      const filename = path.slice('/_og-satori-fonts/'.length)
+    // Static font downloads (separate from @nuxt/fonts to avoid conflicts)
+    if (path.startsWith('/_og-static-fonts/')) {
+      const filename = path.slice('/_og-static-fonts/'.length)
       const cached = await readFile(join(buildDir, 'cache', 'og-image', 'fonts-ttf', filename)).catch(() => null)
-        || await readFile(join(rootDir, '.output', 'public', '_og-satori-fonts', filename)).catch(() => null)
+        || await readFile(join(rootDir, '.output', 'public', '_og-static-fonts', filename)).catch(() => null)
       if (cached?.length)
         return cached
     }
@@ -60,13 +60,12 @@ export async function resolve(event: H3Event, font: FontConfig): Promise<Buffer>
       || await readFile(join(rootDir, '.output', 'public', filename)).catch(() => null)
     if (data?.length)
       return data
-    // Module-provided publicAssets (e.g. _og-fonts) aren't in user's public/ dir
     // Fall through to event.$fetch which resolves via Nitro's asset server
   }
 
-  // Satori static fonts — try og-image's cache first (dev mode)
-  if (path.startsWith('/_og-satori-fonts/')) {
-    const filename = path.slice('/_og-satori-fonts/'.length)
+  // Static fonts — try og-image's cache first (dev mode)
+  if (path.startsWith('/_og-static-fonts/')) {
+    const filename = path.slice('/_og-static-fonts/'.length)
     const cached = await readFile(join(buildDir, 'cache', 'og-image', 'fonts-ttf', filename)).catch(() => null)
     if (cached?.length)
       return cached

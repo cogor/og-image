@@ -64,12 +64,14 @@ describe('resolveOgImageFonts', () => {
     expect(fonts.some((f: any) => f.satoriSrc)).toBe(true)
   })
 
-  it('returns fonts with satoriSrc for satori renderer', async () => {
+  it('returns fonts with satoriSrc for satori renderer (plus Inter fallback)', async () => {
     const staticFont = { family: 'Inter', src: '/inter.ttf', weight: 400, style: 'normal', satoriSrc: '/inter.ttf' }
     vi.mocked(parseFontsFromTemplate).mockResolvedValueOnce([staticFont])
     const opts = createOpts({ hasSatoriRenderer: true })
     const fonts = await resolveOgImageFonts(opts)
-    expect(fonts).toEqual([staticFont])
+    // First font is the user-provided static font, Inter 700 fallback is appended
+    expect(fonts[0]).toEqual(staticFont)
+    expect(fonts.some((f: any) => f.family === 'Inter' && f.weight === 700)).toBe(true)
   })
 
   it('filters by requirements when no dynamic bindings', async () => {

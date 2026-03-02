@@ -1,5 +1,5 @@
 import type { Storage } from 'unstorage'
-import type { OgImageOptions } from '../../../types'
+import type { OgImageOptions, RuntimeFontConfig } from '../../../types'
 import { createStorage } from 'unstorage'
 import lruCacheDriver from 'unstorage/drivers/lru-cache'
 
@@ -18,8 +18,13 @@ export const emojiCache: Storage<string> = createStorage<string>({
   driver: lruCacheDriver({ max: 1000 }),
 })
 
-// cache loaded font data by cacheKey (family-weight-style)
-// Use base64 encoding to avoid Buffer serialization issues in LRU cache
-export const fontCache: Storage<string> = createStorage<string>({
+// Cache loaded font data by cacheKey (family-weight-style-src).
+// Stores BufferSource directly — no base64 serialization overhead.
+export const fontCache: Storage<BufferSource> = createStorage<BufferSource>({
   driver: lruCacheDriver({ max: 100 }),
+})
+
+// Bounded cache for satori's stable font array references.
+export const fontArrayCache: Storage<RuntimeFontConfig[]> = createStorage<RuntimeFontConfig[]>({
+  driver: lruCacheDriver({ max: 20 }),
 })

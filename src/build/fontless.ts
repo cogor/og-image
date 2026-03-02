@@ -17,7 +17,7 @@ import { join } from 'pathe'
 import { createStorage } from 'unstorage'
 import fsDriver from 'unstorage/drivers/fs-lite'
 import { extractCustomFontFamilies } from './css/css-utils'
-import { downloadFontFile, extractSubsetNames, fontKey, FONTS_URL_PREFIX, getStaticInterFonts, matchesFontRequirements, parseAppCssFontFaces, parseFontsFromTemplate, SATORI_FONTS_PREFIX } from './fonts'
+import { downloadFontFile, extractSubsetNames, fontKey, FONTS_URL_PREFIX, getStaticInterFonts, matchesFontRequirements, parseAppCssFontFaces, parseFontsFromTemplate, STATIC_FONTS_PREFIX } from './fonts'
 
 // ============================================================================
 // Types
@@ -106,14 +106,14 @@ export async function initFontless(options: {
         weights: [400, 700],
         styles: ['normal', 'italic'],
         subsets: options.fontSubsets || ['latin'],
-        // Satori can't use WOFF2 — request WOFF (static) format from providers
-        formats: ['woff'],
+        // Satori/Takumi can't reliably use WOFF2 subsets — request static formats
+        formats: ['woff', 'ttf'],
       },
     },
     providers,
   })
 
-  options.logger?.debug(`fontless initialized with formats: ['woff'], subsets: ${JSON.stringify(options.fontSubsets || ['latin'])}, priority: ${JSON.stringify(nuxtFontsConfig?.priority || ['google', 'bunny', 'fontsource'])}`)
+  options.logger?.debug(`fontless initialized with formats: ['woff', 'ttf'], subsets: ${JSON.stringify(options.fontSubsets || ['latin'])}, priority: ${JSON.stringify(nuxtFontsConfig?.priority || ['google', 'bunny', 'fontsource'])}`)
 
   ;(options.nuxt as any)._ogImageFontless = { resolver, renderedFontURLs } satisfies FontlessContext
 }
@@ -253,9 +253,12 @@ async function downloadStaticFonts(options: {
         resolved = true
         break
       }
-      // Fall back to the original variable font results if no static alternative found
+      // If no static alternative found, don't push the (deleted) variable font results.
+      // Variable fonts crash Satori's opentype.js parser, and the files were already
+      // deleted above. Leaving convertedWoff2Files empty means satoriSrc won't be set,
+      // so Satori skips this family naturally and Inter fallback takes over.
       if (!resolved)
-        results.push(...familyResults)
+        options.logger.debug(`${family}: no static font alternative found from any provider`)
     }
     else {
       results.push(...familyResults)
@@ -293,7 +296,8 @@ async function resolveAndDownloadFamily(options: {
           continue
         const url = (src as any).originalURL || src.url
         const format = src.format || (url.endsWith('.woff') ? 'woff' : url.endsWith('.ttf') ? 'truetype' : undefined)
-        if (format !== 'truetype' && format !== 'woff')
+        const isTtf = format === 'truetype' || format === 'ttf'
+        if (!isTtf && format !== 'woff')
           continue
         const style = font.style || 'normal'
         if (!styles.includes(style as 'normal' | 'italic'))
@@ -303,7 +307,7 @@ async function resolveAndDownloadFamily(options: {
         if (resolvedWeights.length === 0)
           continue
 
-        const ext = format === 'truetype' ? 'ttf' : 'woff'
+        const ext = isTtf ? 'ttf' : 'woff'
         for (const weight of resolvedWeights) {
           const filename = `${family.replace(/[^a-z0-9]/gi, '_')}-${weight}-${style}.${ext}`
           const destPath = join(ttfDir, filename)
@@ -386,7 +390,7 @@ export async function convertWoff2ToTtf(options: ProcessFontsOptions): Promise<v
 
     for (const font of downloaded) {
       const key = `${font.family}-${font.weight}-${font.style}`
-      convertedWoff2Files.set(key, `${SATORI_FONTS_PREFIX}/${font.filename}`)
+      convertedWoff2Files.set(key, `${STATIC_FONTS_PREFIX}/${font.filename}`)
     }
 
     if (convertedWoff2Files.size > 0) {
@@ -424,10 +428,10 @@ export async function resolveMissingFontFamilies(options: {
 
   const results = downloaded.map(f => ({
     family: f.family,
-    src: `${SATORI_FONTS_PREFIX}/${f.filename}`,
+    src: `${STATIC_FONTS_PREFIX}/${f.filename}`,
     weight: f.weight,
     style: f.style,
-    satoriSrc: `${SATORI_FONTS_PREFIX}/${f.filename}`,
+    satoriSrc: `${STATIC_FONTS_PREFIX}/${f.filename}`,
   }))
 
   if (results.length > 0)
@@ -554,18 +558,26 @@ export async function resolveOgImageFonts(options: {
     return fonts
   }
 
-  // 5. Satori: need static fonts — fall back to Inter if nothing usable
-  if (fonts.length === 0) {
-    logger.debug('No fonts available, using static Inter fallback')
-    return staticInterFonts
+  // 5. Always include bundled Inter as a guaranteed last-resort fallback.
+  // Static TTF files work with all renderers. Without this, if all user fonts
+  // fail to load at runtime (e.g. WOFF2 subset bugs in Takumi, 404 on satoriSrc),
+  // text becomes invisible because there's no system font fallback.
+  const existingInterKeys = new Set(fonts.filter(f => f.family === 'Inter').map(f => fontKey(f)))
+  for (const interFont of staticInterFonts) {
+    if (!existingInterKeys.has(fontKey(interFont)))
+      fonts.push(interFont)
   }
 
-  // 6. Satori: check for variable fonts it can't use
+  if (fonts.length === staticInterFonts.length) {
+    logger.debug('No user fonts available, using static Inter fallback only')
+  }
+
+  // 6. Satori: warn about variable fonts it can't use
   const satoriFonts = fonts.filter(f => f.satoriSrc)
   if (satoriFonts.length === 0) {
-    const variableFamilies = [...new Set(fonts.map(f => f.family))]
-    logger.debug(`All fonts are variable fonts (${variableFamilies.join(', ')}). Variable fonts are not supported by Satori renderer. Will fall back to bundled Inter font at render time.`)
-    return [...fonts, ...staticInterFonts]
+    const variableFamilies = [...new Set(fonts.filter(f => f.family !== 'Inter').map(f => f.family))]
+    if (variableFamilies.length > 0)
+      logger.debug(`All fonts are variable fonts (${variableFamilies.join(', ')}). Variable fonts are not supported by Satori renderer. Will fall back to bundled Inter font at render time.`)
   }
 
   return fonts

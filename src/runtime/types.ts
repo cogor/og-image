@@ -212,6 +212,8 @@ export interface FontConfig {
   absolutePath?: string
   /** Unicode range for font subsetting (e.g., "U+0000-00FF"). Passed to Satori for proper glyph selection. */
   unicodeRange?: string
+  /** When true, this font survives requirements filtering as a last-resort fallback. */
+  fallback?: boolean
 }
 
 export interface RuntimeFontConfig extends FontConfig {

@@ -93,7 +93,13 @@ async function createPng(event: OgImageRenderEventContext) {
   const Resvg = await useResvg()
   const resvg = new Resvg(svg, options)
   const pngData = resvg.render()
-  return pngData.asPng()
+  const png = pngData.asPng()
+  // Free WASM resources when using @resvg/resvg-wasm (no-op for native binding)
+  if (typeof (pngData as any).free === 'function')
+    (pngData as any).free()
+  if (typeof (resvg as any).free === 'function')
+    (resvg as any).free()
+  return png
 }
 
 async function createJpeg(event: OgImageRenderEventContext) {

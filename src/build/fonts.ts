@@ -27,13 +27,15 @@ export interface ParsedFont {
   subset?: string
   /** Absolute filesystem path for direct file reads (e.g. bundled fallback fonts). */
   absolutePath?: string
+  /** When true, this font survives requirements filtering as a last-resort fallback. */
+  fallback?: boolean
 }
 
 /** URL prefix for @nuxt/fonts web fonts (used by fontless normalizeFontData) */
 export const FONTS_URL_PREFIX = '/_fonts'
 
-/** URL prefix for Satori-specific static font downloads (separate from @nuxt/fonts to avoid conflicts) */
-export const SATORI_FONTS_PREFIX = '/_og-satori-fonts'
+/** URL prefix for static font downloads (separate from @nuxt/fonts to avoid conflicts) */
+export const STATIC_FONTS_PREFIX = '/_og-static-fonts'
 
 export interface FontProcessingState {
   /** Map of font identity (family+weight+style) → fontless-downloaded static font path */
@@ -310,19 +312,21 @@ export function getStaticInterFonts(fontsDir?: string): ParsedFont[] {
   return [
     {
       family: 'Inter',
-      src: '/_og-fonts/inter-400-latin.ttf',
+      src: `${STATIC_FONTS_PREFIX}/inter-400-latin.ttf`,
       weight: 400,
       style: 'normal',
-      satoriSrc: '/_og-fonts/inter-400-latin.ttf',
+      satoriSrc: `${STATIC_FONTS_PREFIX}/inter-400-latin.ttf`,
       absolutePath: fontsDir ? join(fontsDir, 'inter-400-latin.ttf') : undefined,
+      fallback: true,
     },
     {
       family: 'Inter',
-      src: '/_og-fonts/inter-700-latin.ttf',
+      src: `${STATIC_FONTS_PREFIX}/inter-700-latin.ttf`,
       weight: 700,
       style: 'normal',
-      satoriSrc: '/_og-fonts/inter-700-latin.ttf',
+      satoriSrc: `${STATIC_FONTS_PREFIX}/inter-700-latin.ttf`,
       absolutePath: fontsDir ? join(fontsDir, 'inter-700-latin.ttf') : undefined,
+      fallback: true,
     },
   ]
 }
@@ -331,29 +335,39 @@ export function getStaticInterFonts(fontsDir?: string): ParsedFont[] {
 // Font Output Copying
 // ============================================================================
 
-export function copyTtfFontsToOutput(options: {
+/**
+ * Copy all static fonts (fontless downloads + bundled Inter fallback) to the build output.
+ * Both are served under /_og-static-fonts/ at runtime.
+ */
+export function copyStaticFontsToOutput(options: {
   buildDir: string
+  bundledFontsDir: string
   outputPublicDir: string
   logger: ConsolaInstance
 }): void {
-  const { buildDir, outputPublicDir, logger } = options
-  const ttfSourceDir = join(buildDir, 'cache', 'og-image', 'fonts-ttf')
-
-  if (!existsSync(ttfSourceDir))
-    return
-
-  const fontFiles = fs.readdirSync(ttfSourceDir).filter(f => f.endsWith('.ttf') || f.endsWith('.woff'))
-  if (fontFiles.length === 0)
-    return
-
-  const outputDir = join(outputPublicDir, SATORI_FONTS_PREFIX.slice(1))
+  const { buildDir, bundledFontsDir, outputPublicDir, logger } = options
+  const outputDir = join(outputPublicDir, STATIC_FONTS_PREFIX.slice(1))
   fs.mkdirSync(outputDir, { recursive: true })
 
-  for (const file of fontFiles) {
-    const src = join(ttfSourceDir, file)
-    const dest = join(outputDir, file)
-    fs.copyFileSync(src, dest)
+  let count = 0
+
+  // Copy bundled Inter fallback fonts
+  if (existsSync(bundledFontsDir)) {
+    for (const file of fs.readdirSync(bundledFontsDir).filter(f => f.endsWith('.ttf') || f.endsWith('.woff'))) {
+      fs.copyFileSync(join(bundledFontsDir, file), join(outputDir, file))
+      count++
+    }
   }
 
-  logger.debug(`Copied ${fontFiles.length} static fonts to output`)
+  // Copy fontless-downloaded static fonts
+  const ttfSourceDir = join(buildDir, 'cache', 'og-image', 'fonts-ttf')
+  if (existsSync(ttfSourceDir)) {
+    for (const file of fs.readdirSync(ttfSourceDir).filter(f => f.endsWith('.ttf') || f.endsWith('.woff'))) {
+      fs.copyFileSync(join(ttfSourceDir, file), join(outputDir, file))
+      count++
+    }
+  }
+
+  if (count > 0)
+    logger.debug(`Copied ${count} static fonts to output`)
 }

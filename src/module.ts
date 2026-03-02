@@ -27,7 +27,7 @@ import { setupDevHandler } from './build/dev'
 import { setupDevToolsUI } from './build/devtools'
 import { convertWoff2ToTtf, persistFontUrlMapping, resolveOgImageFonts } from './build/fontless'
 import {
-  copyTtfFontsToOutput,
+  copyStaticFontsToOutput,
   parseFontsFromTemplate,
   resolveFontFamilies,
 } from './build/fonts'
@@ -46,7 +46,7 @@ import { addComponentWarning, addConfigWarning, emitWarnings, hasWarnings, REMOV
 import { onInstall, onUpgrade } from './onboarding'
 import { logger } from './runtime/logger'
 import { registerTypeTemplates } from './templates'
-import { checkLocalChrome, getRendererFromFilename, hasResolvableDependency, isUndefinedOrTruthy } from './util'
+import { checkLocalChrome, getRegisteredBaseNames, getRendererFromFilename, hasResolvableDependency, isUndefinedOrTruthy } from './util'
 import { ensureProviderDependencies, getInstalledProviders, getMissingDependencies, getRecommendedBinding, promptForRendererSelection } from './utils/dependencies'
 
 export type {
@@ -1018,6 +1018,7 @@ export default defineNuxtModule<ModuleOptions>({
               // skip if already added (user ejected with same name)
               if (ogImageComponentCtx.components.some(c => c.pascalName === pascalName))
                 return
+              }
               ogImageComponentCtx.components.push({
                 hash: '',
                 pascalName,
@@ -1076,19 +1077,12 @@ export default defineNuxtModule<ModuleOptions>({
       return `export const componentNames = ${JSON.stringify(ogImageComponentCtx.components)}`
     }
     nuxt.options.nitro.publicAssets ||= []
-    // When @nuxt/fonts is not installed, serve static Inter TTFs as public assets
-    if (!hasNuxtFonts) {
-      nuxt.options.nitro.publicAssets.push({
-        dir: resolve('./runtime/public/_og-fonts'),
-        baseURL: '/_og-fonts',
-        maxAge: 60 * 60 * 24 * 365,
-      })
-    }
-    // Serve Satori static font downloads (separate from @nuxt/fonts /_fonts/)
-    const satoriTtfDir = join(nuxt.options.buildDir, 'cache', 'og-image', 'fonts-ttf')
+    // Serve static font downloads (fontless-resolved + bundled Inter fallback)
+    // All static fonts are served under /_og-static-fonts/ (separate from @nuxt/fonts /_fonts/)
+    const staticFontsTtfDir = join(nuxt.options.buildDir, 'cache', 'og-image', 'fonts-ttf')
     nuxt.options.nitro.publicAssets.push({
-      dir: satoriTtfDir,
-      baseURL: '/_og-satori-fonts',
+      dir: staticFontsTtfDir,
+      baseURL: '/_og-static-fonts',
       maxAge: 60 * 60 * 24 * 365,
     })
 

@@ -66,10 +66,10 @@ describe('multi-font-families', () => {
   })
 
   it('downloads static font files for variable font weights', async () => {
-    // Verify fontless downloaded static WOFF files under /_og-satori-fonts/ (not /_fonts/)
-    const font400: ArrayBuffer = await $fetch('/_og-satori-fonts/Nunito_Sans-400-normal.woff', { responseType: 'arrayBuffer' })
+    // Verify fontless downloaded static WOFF files under /_og-static-fonts/ (not /_fonts/)
+    const font400: ArrayBuffer = await $fetch('/_og-static-fonts/Nunito_Sans-400-normal.woff', { responseType: 'arrayBuffer' })
     expect(font400.byteLength).toBeGreaterThan(1000)
-    const font700: ArrayBuffer = await $fetch('/_og-satori-fonts/Nunito_Sans-700-normal.woff', { responseType: 'arrayBuffer' })
+    const font700: ArrayBuffer = await $fetch('/_og-static-fonts/Nunito_Sans-700-normal.woff', { responseType: 'arrayBuffer' })
     expect(font700.byteLength).toBeGreaterThan(1000)
   })
 
@@ -95,10 +95,10 @@ describe('multi-font-families', () => {
   })
 
   it('downloads static font files for Devanagari (non-Latin subset)', async () => {
-    // Verify fontless downloaded static WOFF for Noto Sans Devanagari under /_og-satori-fonts/
+    // Verify fontless downloaded static WOFF for Noto Sans Devanagari under /_og-static-fonts/
     // This is the regression fix: Takumi's WOFF2 decompressor can't handle subsetted WOFF2
     // files from Google Fonts CDN, so the fontless pipeline must provide static alternatives
-    const font400: ArrayBuffer = await $fetch('/_og-satori-fonts/Noto_Sans_Devanagari-400-normal.woff', { responseType: 'arrayBuffer' })
+    const font400: ArrayBuffer = await $fetch('/_og-static-fonts/Noto_Sans_Devanagari-400-normal.woff', { responseType: 'arrayBuffer' })
     expect(font400.byteLength).toBeGreaterThan(1000)
   })
 
