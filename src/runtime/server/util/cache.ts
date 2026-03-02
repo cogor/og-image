@@ -2,7 +2,7 @@ import type { H3Error } from 'h3'
 import type { OgImageRenderEventContext } from '../../types'
 import { createError, getQuery, handleCacheHeaders, setHeader, setHeaders } from 'h3'
 import { useStorage } from 'nitropack/runtime'
-import { hash } from 'ohash'
+import { digest } from 'ohash'
 import { withTrailingSlash } from 'ufo'
 import { prefixStorage } from 'unstorage'
 
@@ -76,7 +76,7 @@ export async function useOgImageBufferCache(ctx: OgImageRenderEventContext, opti
       const headers = {
         // avoid multi-tenancy cache issues
         'Vary': 'accept-encoding, host',
-        'etag': `W/"${hash(value)}"`,
+        'etag': `W/"${digest(value)}"`,
         'last-modified': new Date().toUTCString(),
         'cache-control': `public, s-maxage=${maxAge}, stale-while-revalidate`,
       }
