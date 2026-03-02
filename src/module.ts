@@ -1096,7 +1096,7 @@ export default defineNuxtModule<ModuleOptions>({
       // Use dev-prerender binding which handles dev/prerender/runtime for node
       // Use cloudflare binding for cloudflare presets at runtime
       const normalizedPreset = preset.replace(/-legacy$/, '')
-      const isCloudflare = ['cloudflare', 'cloudflare-pages', 'cloudflare-module'].includes(normalizedPreset)
+      const isCloudflare = normalizedPreset === 'cloudflare' || normalizedPreset.startsWith('cloudflare-')
       if (isCloudflare) {
         const devBinding = resolver.resolve('./runtime/server/og-image/bindings/font-assets/dev-prerender')
         const cfBinding = resolver.resolve('./runtime/server/og-image/bindings/font-assets/cloudflare')
@@ -1246,12 +1246,13 @@ export const rootDir = ${JSON.stringify(nuxt.options.rootDir)}`
         fontProcessingDone = true
       })
 
-      // Copy converted TTFs to output after Nitro copies publicAssets
+      // Explicitly copy all static fonts (bundled Inter + fontless downloads) to output.
+      // Nitro publicAssets may not copy module-provided directories on all presets
+      // (e.g. cloudflare-durable), so we ensure they're always in the output.
       nuxt.hook('nitro:build:public-assets' as any, (nitro: any) => {
-        if (!hasSatoriRenderer() && !hasTakumiRenderer())
-          return
-        copyTtfFontsToOutput({
+        copyStaticFontsToOutput({
           buildDir: nuxt.options.buildDir,
+          bundledFontsDir: resolve('./runtime/public/_og-fonts'),
           outputPublicDir: nitro.options.output.publicDir,
           logger,
         })
